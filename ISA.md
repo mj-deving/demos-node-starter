@@ -123,6 +123,7 @@ Why: Node participation must not depend on copying shared credentials or exposin
 - 2026-09-04: TruffleHog found no credential candidate outside ignored dependencies; focused high-risk token-pattern scan was clean.
 - 2026-09-04: Upstream `origin/stabilisation` confirmed `demos_node_state` and the explicit Compose service/reaper boundaries used by the starter.
 - 2026-09-04: Pre-commit independent review found five P1/P2 defects. All were accepted and repaired: root-owned Compose inputs, identity-aware backup validation, rollback-preserving restore activation, repeat-install rejection, and semantic endpoint/identity checks.
+- 2026-09-04: A fresh clone of private commit `3a649f7` installed the frozen Bun dependencies, passed all 19 tests and 85 expectations, and resolved every tracked local Markdown link.
 - 2026-09-04: SSH key generation, remote doctor, and full bootstrap remain deliberately unclaimed until the disposable Ubuntu canary.
 
 ## Remaining Work

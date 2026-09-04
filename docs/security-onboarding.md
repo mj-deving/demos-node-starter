@@ -4,7 +4,7 @@ Complete this before an operator installs or inherits a node. This is an access 
 
 ## Personal identity
 
-- [ ] The operator uses their own GitHub, Codex/OpenAI, email, VPS-provider, and password-manager identities.
+- [ ] The operator uses their own GitHub, Codex/OpenAI, email, hosting/provider, and password-manager identities.
 - [ ] MFA or passkeys are enabled; recovery codes are stored outside the workstation.
 - [ ] No account, browser profile, token, SSH private key, or Codex session was copied from another operator.
 - [ ] The operator can identify who may approve node, repository, provider, and testnet changes.
@@ -25,9 +25,9 @@ Complete this before an operator installs or inherits a node. This is an access 
 - [ ] `.demos/`, `.env`, backups, logs, and private inventory are ignored by Git.
 - [ ] `bun run check` passes from a fresh dependency install.
 
-## VPS and credentials
+## Host and credentials
 
-- [ ] The VPS is dedicated to this node and runs supported Ubuntu.
+- [ ] The operator controls the node host, it runs supported Ubuntu, and the node workload is not mixed with untrusted tenants.
 - [ ] Provider ownership, billing contact, recovery path, and firewall owner are known.
 - [ ] Every API token has one named human owner, purpose, expiry, and revocation route.
 - [ ] `./demosctl secrets doctor` reports only names/status, owner `root:root`, and mode `600`.

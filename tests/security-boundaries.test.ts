@@ -36,14 +36,14 @@ describe("checked-in safety boundaries", () => {
     for (const heading of ["Secret inventory", "Secure entry and verification", "Node identity backup", "Routine rotation", "Exposure response", "Offboarding and node transfer", "Quarterly audit"]) {
       expect(runbook).toContain(`## ${heading}`)
     }
-    for (const material of ["DEMOS node identity", "SSH private key", "GitHub token", "Etherscan/Helius", "TLSNotary", "Contabo credentials"]) {
+    for (const material of ["DEMOS node identity", "SSH private key", "GitHub token", "Etherscan/Helius", "TLSNotary", "Hosting account credentials"]) {
       expect(runbook).toContain(material)
     }
   })
 
   test("repository exposes no provider lifecycle command", () => {
     const cli = readFileSync(join(ROOT, "src", "demosctl.ts"), "utf8")
-    expect(cli).not.toMatch(/contabo|deleteInstance|stopInstance|reinstall|shutdown -h|systemctl reboot/i)
+    expect(cli).not.toMatch(/deleteInstance|stopInstance|reinstall|shutdown -h|systemctl reboot/i)
   })
 
   test("restore stages and validates before touching live state", () => {
@@ -79,7 +79,7 @@ describe("checked-in safety boundaries", () => {
     const decisions = readFileSync(join(ROOT, "docs", "decisions", "README.md"), "utf8")
     const incident = readFileSync(join(ROOT, "docs", "templates", "incident-record.md"), "utf8")
     for (const term of ["Start every session", "Sources of truth", "Routine cadence", "Change procedure", "Incident entry point"]) expect(operations).toContain(term)
-    for (const term of ["Personal identity", "Workstation", "Repository and Codex", "VPS and credentials", "Recovery and handover"]) expect(onboarding).toContain(term)
+    for (const term of ["Personal identity", "Workstation", "Repository and Codex", "Host and credentials", "Recovery and handover"]) expect(onboarding).toContain(term)
     expect(decisions).toContain("0001-command-center-and-secret-boundaries.md")
     expect(incident).toContain("Never record tokens")
   })

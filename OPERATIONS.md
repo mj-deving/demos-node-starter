@@ -15,7 +15,7 @@ This repository is the durable control surface for one DEMOS node. Start every n
 | Question | Canonical source |
 |---|---|
 | What host does this workspace target? | `.demos/operator.json` and generated `.demos/WORKSPACE.md` |
-| Which node code is installed? | `/opt/demos-node` Git remote, branch, and commit on the VPS |
+| Which node code is installed? | `/opt/demos-node` Git remote, branch, and commit on the node host |
 | How is the process controlled? | `demos-node.service` |
 | Where are secret values stored? | `/etc/demos-node/node.env`, root-owned mode `0600`; never read it back |
 | Where is node identity stored? | Docker volume `demos_node_state` |

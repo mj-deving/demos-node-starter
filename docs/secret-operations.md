@@ -6,13 +6,13 @@ This runbook covers the complete secret lifecycle: creation, storage, use, backu
 
 | Material | Owner | Canonical location | Backup | Rotation rule |
 |---|---|---|---|---|
-| DEMOS node identity/mnemonic | Individual node operator | Docker volume `demos_node_state` on the VPS | Passphrase-encrypted `age` archives in two operator-controlled locations | Do not rotate casually; coordinate identity replacement with the network maintainer |
+| DEMOS node identity/mnemonic | Individual node operator | Docker volume `demos_node_state` on the node host | Passphrase-encrypted `age` archives in two operator-controlled locations | Do not rotate casually; coordinate identity replacement with the network maintainer |
 | SSH private key | Individual operator | Workstation `~/.ssh/` | Password manager or encrypted offline backup | Rotate on device loss, operator departure, or suspected exposure |
-| SSH public key | Individual operator | Provider control panel and VPS `authorized_keys` | No secret backup required | Overlap old and new keys until new access is proven, then remove old key |
+| SSH public key | Individual operator | Hosting dashboard or host `authorized_keys` | No secret backup required | Overlap old and new keys until new access is proven, then remove the old key |
 | GitHub token | Individual operator | `/etc/demos-node/node.env` | No backup; recreate at issuer | Short expiry and least privilege; revoke before replacing after exposure |
 | Etherscan/Helius/API tokens | Individual operator | `/etc/demos-node/node.env` | No backup; recreate at issuer | Separate production/test keys; use IP restriction where supported |
 | TLSNotary signing key | Node operator, FFI mode only | `/etc/demos-node/node.env` | Encrypted operator backup | Default Docker mode does not need this key |
-| Contabo credentials | Provider account owner | Provider-approved password manager or broker | Provider recovery process | Never place on the node; outside this repository |
+| Hosting account credentials | Hosting account owner | Provider-approved password manager or access broker | Provider recovery process | Never place on the node |
 | Coordinator SUDO key and allowlists | Network maintainer | Maintainer-controlled configuration channel | Maintainer-owned | Public configuration is not a runner secret, but it still requires authenticated provenance |
 
 Shared credentials are prohibited. Every runner creates and can independently revoke their own credentials.
@@ -22,7 +22,7 @@ Shared credentials are prohibited. Every runner creates and can independently re
 1. Create credentials only on the issuer's authenticated site.
 2. Give each credential one purpose and a short, descriptive name containing the node alias.
 3. Use the smallest permission set and a finite expiry.
-4. Enable MFA on GitHub, the VPS provider, email, and password-manager accounts.
+4. Enable MFA on GitHub, hosting/provider, email, and password-manager accounts.
 5. Never create a credential from a link or instruction copied from an unauthenticated message without verifying the issuer domain.
 6. Do not use the same token across nodes, development machines, or operators.
 

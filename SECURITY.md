@@ -14,7 +14,7 @@ If a credential appears in chat, Git, logs, screenshots, or terminal history, as
 
 - Use one dedicated, passphrase-protected Ed25519 SSH key per operator/node.
 - Provision only the public key through the provider.
-- Use a dedicated VPS. Shared or multi-tenant servers are unsupported.
+- Use an operator-controlled Ubuntu host dedicated to the node workload. Shared hosting is unsupported.
 - The `demos` runtime user has no sudo membership.
 - Provider lifecycle and firewall APIs are outside this tool.
 - Codex should run with workspace permissions and approvals, not unrestricted Full Access.

@@ -199,7 +199,7 @@ export function initCommand(parsed: Parsed): void {
   )
   refreshWorkspace(config)
   appendOperation(config, "init")
-  console.log("Operator state initialized. Provision only the .pub key through your VPS provider, then run ./demosctl doctor.")
+  console.log("Operator state initialized. Provision only the .pub key on the node host, then run ./demosctl doctor.")
 }
 
 function doctorCommand(parsed: Parsed): void {

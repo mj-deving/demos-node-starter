@@ -11,7 +11,7 @@ principal_stated_goal: "implement this plan."
 
 ## Problem
 
-New DEMOS node runners currently receive a dense message containing infrastructure actions, broad credentials, stale configuration, and a destructive staking path. They need a safe, repeatable route from a new Codex workspace and a dedicated VPS to a verified testnet node without inheriting another operator's secrets or infrastructure authority.
+New DEMOS node runners currently receive a dense message containing infrastructure actions, broad credentials, stale configuration, and a destructive staking path. They need a safe, repeatable route from a new Codex workspace and an operator-controlled Ubuntu host to a verified testnet node without inheriting another operator's secrets or infrastructure authority.
 
 ## Vision
 
@@ -19,7 +19,7 @@ An operator with no Codex or node experience clones one small private repository
 
 ## Out of Scope
 
-- VPS purchase, shutdown, reboot, reinstall, billing, or Contabo API automation.
+- Host acquisition, shutdown, reboot, reinstall, billing, or provider-specific automation.
 - Shared servers, multi-node fleet orchestration, public release, or upstream node-source changes.
 - Shared network credentials, central bot tokens, or private fleet inventory.
 - Windows-native automation; Windows operators use WSL.
@@ -51,7 +51,7 @@ Deliver a private GitHub alpha at `mj-deving/demos-node-starter` with a repo-loc
 - [ ] ISC-3: `init` creates a dedicated Ed25519 key and SSH config without reading or printing private-key content.
 - [ ] ISC-4: `doctor` validates local dependencies, state shape, SSH authentication, and remote platform without mutation.
 - [x] ISC-5: Every remote mutation requires the exact command confirmation token.
-- [ ] ISC-6: `install` targets only a dedicated Ubuntu VPS, creates a non-sudo `demos` user, fast-forward clones upstream `stabilisation`, and installs `demos-node.service`.
+- [ ] ISC-6: `install` targets an operator-controlled Ubuntu host, creates a non-sudo `demos` user, clones upstream `stabilisation`, and installs `demos-node.service`.
 - [x] ISC-7: The installed service starts explicit Compose services and never starts the Docker-socket reaper.
 - [x] ISC-8: `secrets configure` uses hidden input and SSH stdin, writes a root-owned mode-0600 file, and returns names/set-state only.
 - [x] ISC-9: No secret fixture appears in Git, command arguments, CLI output, or committed files.
@@ -89,7 +89,7 @@ Why: The operator needs one understandable interface whose state and effects are
 - ISC-1, ISC-2, ISC-3, ISC-4, ISC-5, ISC-15
 
 ### F2 · Bounded remote node lifecycle
-Why: A new VPS becomes a recoverable node without giving the tool provider-level or host-wide authority.
+Why: A prepared Ubuntu host becomes a recoverable node without giving the tool hosting-account or host-wide lifecycle authority.
 
 - ISC-6, ISC-7, ISC-11, ISC-12, ISC-13, ISC-14
 
@@ -102,7 +102,7 @@ Why: Node participation must not depend on copying shared credentials or exposin
 
 - 2026-09-04: Chose a separate private starter repository over edits to upstream or the private fleet repo, preserving both authority boundaries.
 - 2026-09-04: Chose a repo-local skill over a plugin or global skill because the workflow depends on this repository's CLI and DEMOS-specific runtime contract.
-- 2026-09-04: Deferred Contabo API automation; SSH access is sufficient for v1 and avoids provider lifecycle authority.
+- 2026-09-04: Kept host acquisition and networking provider-neutral; the node workflow begins from verified SSH access to a prepared Ubuntu host.
 - 2026-09-04: Chose a root-owned, non-group-writable checkout and explicit Compose service selection to prevent host-user edits from reaching root-run Docker and to exclude the upstream reaper, whose Docker socket is root-equivalent.
 - 2026-09-04: Chose interactive stdin secret transfer over checked-in templates, environment arguments, or model-mediated credential entry.
 - 2026-09-04: Strengthened secret handling into a full lifecycle contract with value-free inspection, per-operator ownership, encrypted recovery, issuer-side revocation, and offboarding.

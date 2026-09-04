@@ -26,7 +26,7 @@ done
 [[ -r /etc/os-release ]] || fail "unsupported operating system"
 # shellcheck disable=SC1091
 . /etc/os-release
-[[ "${ID:-}" == "ubuntu" ]] || fail "only dedicated Ubuntu VPS hosts are supported"
+[[ "${ID:-}" == "ubuntu" ]] || fail "only operator-controlled Ubuntu hosts are supported"
 [[ "${PUBLIC_URL}" =~ ^https?://[^/[:space:]]+:53550$ ]] || fail "--public-url must be an http(s) host on port 53550"
 [[ ! "${PUBLIC_URL}" =~ (localhost|127\.0\.0\.1|\[::1\]) ]] || fail "--public-url must be publicly reachable"
 [[ "${BRANCH}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$ ]] || fail "invalid branch"

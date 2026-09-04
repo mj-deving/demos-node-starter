@@ -1,6 +1,6 @@
 # DEMOS Node Starter Instructions
 
-This repository is a beginner-safe operator surface for one dedicated DEMOS node VPS.
+This repository is a beginner-safe operator surface for one operator-controlled Ubuntu node host, whether cloud VPS, bare metal, or a suitable local system.
 
 ## Read order
 
@@ -16,8 +16,8 @@ This repository is a beginner-safe operator surface for one dedicated DEMOS node
 - Never print, read back, commit, or place secrets in command arguments.
 - A value-free `./demosctl secrets doctor` may inspect allowlisted names, file owner, and mode; it must never output values.
 - Never copy credentials from chat into configuration. Each operator supplies individually owned credentials through `./demosctl secrets configure`.
-- A request to stop, start, or restart a node applies only to `demos-node.service`. It never authorizes a VPS shutdown, reboot, reinstall, firewall change, purchase, or deletion.
-- Contabo API operations are outside this repository. Use the provider UI for initial SSH-key provisioning.
+- A request to stop, start, or restart a node applies only to `demos-node.service`. It never authorizes a host shutdown, reboot, reinstall, firewall change, purchase, or deletion.
+- Hosting and network setup remain owned by the operator. Provision only the dedicated SSH public key before using this repository.
 - Before any remote mutation, run `./demosctl doctor` and name the target host and exact effect.
 - Require the CLI confirmation token for `install`, `stake`, `start`, `stop`, `restore`, and `update`.
 - Preserve node identity and state. Run `./demosctl backup` before clean, restore, or update operations.

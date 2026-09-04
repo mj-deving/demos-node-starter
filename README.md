@@ -1,13 +1,13 @@
 # DEMOS Node Starter
 
-A beginner-safe, Codex-assisted operator kit for running one DEMOS testnet node on a dedicated Ubuntu VPS.
+A beginner-safe, Codex-assisted operator kit for running one DEMOS testnet node on an operator-controlled Ubuntu host.
 
-This repository manages the node through SSH. It does **not** purchase, reboot, reinstall, stop, or delete a VPS, and it does not use the Contabo API.
+The host can be a cloud VPS from any provider, dedicated hardware, or a suitable local Ubuntu system. The starter connects through SSH and begins after the operator has prepared the host and its network access.
 
 ## What you need
 
-- A dedicated Ubuntu 22.04 or 24.04 VPS with at least 4 CPU cores, 4 GB RAM, SSD storage, and a public IPv4 address.
-- TCP ports `53550` and `53551` allowed by the provider firewall.
+- An operator-controlled Ubuntu 22.04 or 24.04 host with at least 4 CPU cores, 4 GB RAM, and SSD storage.
+- A publicly reachable IP or DNS endpoint for the node, with TCP ports `53550` and `53551` routed to the host.
 - A Mac, Linux, or Windows-with-WSL workstation with Git, Bun, OpenSSH, and `age`.
 - Codex in the ChatGPT desktop app, CLI, or IDE extension. Use workspace permissions with approvals; do not enable unrestricted Full Access for node operations.
 - Your own GitHub, Etherscan, and Helius accounts if the current testnet coordinator requires those features.
@@ -33,7 +33,7 @@ Treat this clone as the node's command center, not as a disposable installer. Re
 
 ## 2. Create the dedicated SSH identity
 
-Choose a short local alias and substitute the VPS public IP:
+Choose a short local alias and substitute the host's public IP or DNS name:
 
 ```bash
 ./demosctl init \
@@ -42,13 +42,13 @@ Choose a short local alias and substitute the VPS public IP:
   --public-url http://203.0.113.10:53550
 ```
 
-The command asks for a passphrase and creates a dedicated Ed25519 key. Upload **only** the matching `.pub` file through the Contabo control panel. Never upload or paste the private key.
+The command asks for a passphrase and creates a dedicated Ed25519 key. Add **only** the matching `.pub` file through your hosting dashboard or the host's `authorized_keys`. Never upload or paste the private key.
 
 Load the key into your local SSH agent with `ssh-add <identity-file>` before running unattended checks. `./demosctl workspace` writes a private, gitignored `.demos/WORKSPACE.md` system map for future operators and Codex sessions.
 
-The example address `203.0.113.10` is documentation-only. Use the real address assigned to your VPS.
+The example address `203.0.113.10` is documentation-only. Use the real address or DNS name routed to your host.
 
-## 3. Verify access without changing the VPS
+## 3. Verify access without changing the host
 
 ```bash
 ./demosctl doctor
@@ -66,7 +66,7 @@ Review the exact target shown by `.demos/operator.json`, then run:
 
 The installer:
 
-- accepts only Ubuntu on a dedicated VPS;
+- accepts a supported Ubuntu host reached through root SSH;
 - installs Docker from Docker's official Ubuntu repository;
 - creates a non-sudo `demos` runtime user;
 - clones `https://github.com/kynesyslabs/node.git` on `stabilisation` into `/opt/demos-node`;
@@ -121,7 +121,7 @@ Shared Discord, RapidAPI, Nomis, GitHub, or other credentials copied from chat m
 
 ## 7. Stop, fund, and stake
 
-Stopping the node does not stop the VPS:
+Stopping the node does not stop or reboot the host:
 
 ```bash
 ./demosctl stop --confirm stop
@@ -184,7 +184,6 @@ There is deliberately no purge command. Never use `docker compose down -v` unles
 ## Current alpha limits
 
 - Private alpha; not yet approved for public redistribution or live-node rollout.
-- Dedicated Ubuntu VPS only.
-- Provider firewall setup remains manual.
+- Operator-controlled Ubuntu host only; shared hosting is unsupported.
+- Public routing and host/provider firewall setup remain operator-managed.
 - Network bootstrap peer and final chain-aware acceptance must be confirmed by the Kynesys maintainer.
-- No Contabo API integration.

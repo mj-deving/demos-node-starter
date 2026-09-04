@@ -9,3 +9,6 @@ Current decisions:
 - `0001-command-center-and-secret-boundaries.md` — repository ownership, local/private state, and secret boundaries.
 - `0002-bounded-node-lifecycle.md` — service-only lifecycle, upstream policy, and excluded Docker reaper.
 - `0003-public-alpha-security-gates.md` — immutable update, SSH trust, helper-image, and restore-identity gates for public distribution.
+- `0004-beginner-first-use-host-trust.md` — bounded first-use SSH trust for freshly provisioned hosts, with strict permanent pinning.
+- `0005-qualified-recovery-without-password-manager.md` — two-copy Age recovery, mechanical qualification, operation gates, and atomic value-free secret writes.
+- `0006-provider-credential-purpose-and-fleet-scope.md` — provider-key purpose, current requirement, least privilege, and controlled reuse within one operator-owned fleet.

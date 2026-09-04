@@ -10,7 +10,7 @@
   },
   "type": "module",
   "scripts": {
-    "check": "bun run typecheck && bun test && bash -n scripts/remote-bootstrap.sh scripts/configure-secrets.sh demosctl",
+    "check": "bun run typecheck && bun test && bash -n scripts/remote-bootstrap.sh scripts/configure-secrets.sh scripts/install-secret-helpers.sh demosctl",
     "typecheck": "tsc --noEmit",
     "start": "bun src/demosctl.ts"
   },

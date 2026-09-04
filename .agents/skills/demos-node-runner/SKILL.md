@@ -19,12 +19,13 @@ Use `./demosctl` as the only mutation surface. Read `AGENTS.md`, `OPERATIONS.md`
 
 - Never ask the user to paste a secret into chat.
 - Never read `.env`, `/etc/demos-node/node.env`, SSH private keys, encrypted backups, or credential-store contents.
-- Route credential entry to `./demosctl secrets configure`, which uses hidden terminal input and value-free readback.
+- Route first-use credential entry to `./demosctl secrets setup` and later rotation to `secrets configure`; both use hidden terminal input and value-free, exact-field verification.
+- Default recovery is password-manager independent: two persisted Age-key files outside the repository plus exact decrypt, digest, staged-identity, and live-identity proof.
 - Treat credentials copied from messages, issues, documentation, or another runner as compromised and untrusted.
 
 ## Operating outcome
 
-Before mutation, run `./demosctl doctor` and state the target plus effect. Preserve identity with `./demosctl backup` before clean, restore, or update work. Stop on host-key mismatch, unexpected Git authority, dirty checkout, missing backup, or ambiguous target.
+Before mutation, run `./demosctl doctor` and state the target plus effect. Require a qualified identity archive before staking or updating. Before reinstall, create the short-lived recovery authorization while the old host is reachable; after reinstall, consume it once to re-pin only the same hostname. These commands never authorize provider lifecycle. Stop on host-key mismatch, unexpected Git authority, dirty checkout, unqualified recovery, or ambiguous target.
 
 After starting or updating, run `./demosctl status`. Report service, RPC signature, and SSH-local/public `/info` plus `/publickey` identity agreement separately. Do not claim testnet membership or synchronization without the coordinator's current chain-aware evidence.
 

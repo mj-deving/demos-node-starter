@@ -17,6 +17,12 @@ describe("checked-in safety boundaries", () => {
     expect(bootstrap).not.toContain('sudo -u "${RUNTIME_USER}" git')
     expect(bootstrap).not.toContain("docker compose down -v")
     expect(bootstrap).not.toContain("git reset --hard")
+    expect(bootstrap).toContain('checkout --detach "${COMMIT}"')
+    expect(bootstrap).toContain("cleanup_checkout")
+    expect(bootstrap.indexOf('rev-parse "origin/${BRANCH}"')).toBeLessThan(bootstrap.indexOf('mv -- "${staging_root}/checkout" "${REPO_DIR}"'))
+    expect(bootstrap).toContain('VERSION_ID:-}" == "22.04"')
+    expect(bootstrap).toContain('dpkg --print-architecture)" == "amd64"')
+    expect(bootstrap).toContain('docker pull "${HELPER_IMAGE}"')
   })
 
   test("secret configuration transports stdin and never places values in SSH arguments", () => {
@@ -55,6 +61,10 @@ describe("checked-in safety boundaries", () => {
     expect(restore).toContain("rollbackVolume")
     expect(restore).toContain("activation failed; restoring rollback volume")
     expect(restore).toContain("test -s /target/.demos_identity")
+    expect(restore).toContain("expected-public-key")
+    expect(restore).toContain("verifyStagedIdentity")
+    expect(restore).toContain("grep -Fx --")
+    expect(restore).toContain("--pull=never --network=none --cap-drop=ALL")
   })
 
   test("backup requires an existing volume with node identity", () => {
@@ -62,6 +72,10 @@ describe("checked-in safety boundaries", () => {
     const backup = cli.slice(cli.indexOf("async function backupCommand"), cli.indexOf("async function restoreCommand"))
     expect(backup).toContain("docker volume inspect demos_node_state")
     expect(backup).toContain("test -s /state/.demos_identity")
+    expect(cli).toContain('HELPER_IMAGE = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"')
+    expect(backup).toContain("docker image inspect ${HELPER_IMAGE}")
+    expect(backup).toContain("docker pull ${HELPER_IMAGE}")
+    expect(backup).toContain("--network=none")
   })
 
   test("status validates DEMOS response semantics and identity agreement", () => {
@@ -82,5 +96,11 @@ describe("checked-in safety boundaries", () => {
     for (const term of ["Personal identity", "Workstation", "Repository and Codex", "Host and credentials", "Recovery and handover"]) expect(onboarding).toContain(term)
     expect(decisions).toContain("0001-command-center-and-secret-boundaries.md")
     expect(incident).toContain("Never record tokens")
+  })
+
+  test("host authentication completes before SSH private-key generation", () => {
+    const cli = readFileSync(join(ROOT, "src", "demosctl.ts"), "utf8")
+    const init = cli.slice(cli.indexOf("export function initCommand"), cli.indexOf("function doctorCommand"))
+    expect(init.indexOf("scanned SSH host keys did not match")).toBeLessThan(init.indexOf('binary("ssh-keygen"), ["-t", "ed25519"'))
   })
 })

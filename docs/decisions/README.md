@@ -8,3 +8,4 @@ Current decisions:
 
 - `0001-command-center-and-secret-boundaries.md` — repository ownership, local/private state, and secret boundaries.
 - `0002-bounded-node-lifecycle.md` — service-only lifecycle, upstream policy, and excluded Docker reaper.
+- `0003-public-alpha-security-gates.md` — immutable update, SSH trust, helper-image, and restore-identity gates for public distribution.

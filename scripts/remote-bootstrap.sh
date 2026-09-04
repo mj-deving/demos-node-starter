@@ -3,11 +3,12 @@ set -euo pipefail
 
 PUBLIC_URL=""
 BRANCH="stabilisation"
+COMMIT=""
 REPO_URL="https://github.com/kynesyslabs/node.git"
 REPO_DIR="/opt/demos-node"
-RUNTIME_USER="demos"
 SERVICE="demos-node.service"
 SECRETS_FILE="/etc/demos-node/node.env"
+HELPER_IMAGE="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 
 fail() {
   echo "remote-bootstrap: $*" >&2
@@ -18,6 +19,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --public-url) PUBLIC_URL="${2:-}"; shift 2 ;;
     --branch) BRANCH="${2:-}"; shift 2 ;;
+    --commit) COMMIT="${2:-}"; shift 2 ;;
     *) fail "unknown argument: $1" ;;
   esac
 done
@@ -27,9 +29,12 @@ done
 # shellcheck disable=SC1091
 . /etc/os-release
 [[ "${ID:-}" == "ubuntu" ]] || fail "only operator-controlled Ubuntu hosts are supported"
+[[ "${VERSION_ID:-}" == "22.04" || "${VERSION_ID:-}" == "24.04" ]] || fail "only Ubuntu 22.04 and 24.04 are supported"
+[[ "$(dpkg --print-architecture)" == "amd64" ]] || fail "only amd64 hosts are supported because the required upstream TLSNotary service is linux/amd64"
 [[ "${PUBLIC_URL}" =~ ^https?://[^/[:space:]]+:53550$ ]] || fail "--public-url must be an http(s) host on port 53550"
 [[ ! "${PUBLIC_URL}" =~ (localhost|127\.0\.0\.1|\[::1\]) ]] || fail "--public-url must be publicly reachable"
 [[ "${BRANCH}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$ ]] || fail "invalid branch"
+[[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]] || fail "--commit must be a full lowercase SHA-1"
 
 export DEBIAN_FRONTEND=noninteractive
 while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
@@ -38,7 +43,10 @@ done
 apt-get update
 apt-get install -y ca-certificates curl git gnupg sudo
 
-if ! command -v docker >/dev/null 2>&1; then
+if command -v docker >/dev/null 2>&1; then
+  dpkg-query -W -f='${Status}\n' docker-ce docker-compose-plugin 2>/dev/null | grep -c '^install ok installed$' | grep -qx '2' \
+    || fail "existing Docker is not the expected docker-ce plus docker-compose-plugin installation; reconcile it manually"
+else
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   chmod a+r /etc/apt/keyrings/docker.gpg
@@ -51,18 +59,23 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 systemctl enable --now docker
 docker compose version >/dev/null
-
-if ! id "${RUNTIME_USER}" >/dev/null 2>&1; then
-  useradd --create-home --shell /bin/bash "${RUNTIME_USER}"
-fi
-if id -nG "${RUNTIME_USER}" | tr ' ' '\n' | grep -Eq '^(sudo|docker)$'; then
-  fail "existing demos user has privileged group membership; reconcile manually"
-fi
+docker pull "${HELPER_IMAGE}"
+docker image inspect "${HELPER_IMAGE}" >/dev/null
 
 if [[ ! -d "${REPO_DIR}/.git" ]]; then
   [[ ! -e "${REPO_DIR}" ]] || fail "${REPO_DIR} exists but is not a Git checkout"
-  install -d -m 0755 -o root -g root "${REPO_DIR}"
-  git clone --branch "${BRANCH}" --single-branch "${REPO_URL}" "${REPO_DIR}"
+  staging_root="$(mktemp -d /opt/demos-node.installing.XXXXXX)"
+  cleanup_checkout() { [[ -z "${staging_root}" || ! -d "${staging_root}" ]] || rm -rf -- "${staging_root}"; }
+  trap cleanup_checkout EXIT INT TERM
+  git clone --no-checkout --branch "${BRANCH}" --single-branch "${REPO_URL}" "${staging_root}/checkout"
+  [[ "$(git -C "${staging_root}/checkout" rev-parse "origin/${BRANCH}")" == "${COMMIT}" ]] \
+    || fail "approved commit is not the current fetched branch tip; no code was started"
+  git -C "${staging_root}/checkout" checkout --detach "${COMMIT}"
+  [[ "$(git -C "${staging_root}/checkout" rev-parse HEAD)" == "${COMMIT}" ]] || fail "checkout did not match approved commit"
+  mv -- "${staging_root}/checkout" "${REPO_DIR}"
+  rmdir -- "${staging_root}"
+  staging_root=""
+  trap - EXIT INT TERM
 else
   fail "node checkout already exists; use the backup-gated demosctl update command"
 fi
@@ -71,7 +84,7 @@ chmod -R go-w "${REPO_DIR}"
 
 [[ -f "${REPO_DIR}/.env.example" ]] || fail "upstream .env.example missing"
 if [[ ! -f "${REPO_DIR}/.env" ]]; then
-  install -m 0640 -o root -g "${RUNTIME_USER}" "${REPO_DIR}/.env.example" "${REPO_DIR}/.env"
+  install -m 0600 -o root -g root "${REPO_DIR}/.env.example" "${REPO_DIR}/.env"
 fi
 
 set_env() {
@@ -90,8 +103,8 @@ set_env PROD true "${REPO_DIR}/.env"
 for secret_key in GITHUB_TOKEN ETHERSCAN_API_KEY HELIUS_API_KEY RAPID_API_KEY DISCORD_BOT_TOKEN NOMIS_API_KEY NOMIS_CLIENT_ID HUMAN_PASSPORT_API_KEY HUMAN_PASSPORT_SCORER_ID TLSNOTARY_SIGNING_KEY; do
   set_env "${secret_key}" "" "${REPO_DIR}/.env"
 done
-chmod 0640 "${REPO_DIR}/.env"
-chown root:"${RUNTIME_USER}" "${REPO_DIR}/.env"
+chmod 0600 "${REPO_DIR}/.env"
+chown root:root "${REPO_DIR}/.env"
 
 install -d -m 0755 /etc/demos-node
 if [[ ! -f "${SECRETS_FILE}" ]]; then

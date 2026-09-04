@@ -10,7 +10,7 @@ A node-service request must not accidentally authorize a VPS reboot, deletion, p
 
 ## Decision
 
-All lifecycle commands target only `demos-node.service`. The checkout and every root-consumed Compose/build input remain root-owned and non-group-writable. Source comes from the verified upstream repository on `stabilisation`; repeat install is rejected, while updates require a clean checkout, validated encrypted identity backup, and fast-forward merge. The service selects required Compose services explicitly and excludes the upstream reaper.
+All lifecycle commands target only `demos-node.service`. The checkout and every root-consumed Compose/build input remain root-owned and non-group-writable. Source comes from the verified upstream repository on `stabilisation`; repeat install is rejected, while install and update require an explicitly approved full commit SHA. Updates additionally require a clean checkout, validated encrypted identity backup, and descendant commit on the configured upstream branch. The service selects required Compose services explicitly and excludes the upstream reaper.
 
 ## Consequences
 

@@ -15,7 +15,7 @@ This repository is the durable control surface for one DEMOS node. Start every n
 | Question | Canonical source |
 |---|---|
 | What host does this workspace target? | `.demos/operator.json` and generated `.demos/WORKSPACE.md` |
-| Which node code is installed? | `/opt/demos-node` Git remote, branch, and commit on the node host |
+| Which node code is installed? | `/opt/demos-node` exact detached Git commit and verified upstream remote on the node host |
 | How is the process controlled? | `demos-node.service` |
 | Where are secret values stored? | `/etc/demos-node/node.env`, root-owned mode `0600`; never read it back |
 | Where is node identity stored? | Docker volume `demos_node_state` |
@@ -28,7 +28,8 @@ This repository is the durable control surface for one DEMOS node. Start every n
 ## Routine cadence
 
 - Each session: workspace refresh, doctor before mutation, status after runtime work.
-- Before update or restore: encrypted identity backup and exact target confirmation.
+- Before update: encrypted identity backup, exact target confirmation, and review of the full approved upstream commit.
+- Before restore: encrypted identity backup, exact target confirmation, and a separately recorded expected node public key.
 - Monthly: operating-system security updates in a separately authorized maintenance window; inspect disk space and backup recency.
 - Quarterly: perform the checklist in `docs/secret-operations.md` and review decisions for drift.
 - Annually: prove an encrypted backup on a disposable restore target; never use the only live node as the first drill.

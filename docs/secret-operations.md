@@ -33,7 +33,7 @@ The current upstream GitHub integration reads gists. A classic `repo` scope is t
 Use:
 
 ```bash
-./demosctl secrets configure
+./demosctl secrets configure --confirm secrets
 ./demosctl secrets doctor
 ```
 
@@ -69,7 +69,7 @@ The backup passphrase belongs in the password manager, not beside the archive. A
 For an API token:
 
 1. Create a new individually owned token at the issuer.
-2. Enter it with `./demosctl secrets configure`; enter only the changed field and leave the rest blank.
+2. Enter it with `./demosctl secrets configure --confirm secrets`; enter only the changed field and leave the rest blank.
 3. Run `./demosctl secrets doctor` for value-free state.
 4. Restart with `./demosctl stop --confirm stop`, followed by a separate `./demosctl start --confirm start`.
 5. Run `./demosctl status` and a feature-specific check.

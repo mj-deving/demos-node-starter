@@ -27,7 +27,8 @@ const OPERATIONS_LOG_PATH = join(STATE_DIR, "operations.jsonl")
 const REMOTE_DIR = "/opt/demos-node"
 const UPSTREAM_REPO = "https://github.com/kynesyslabs/node.git" as const
 const SERVICE = "demos-node.service" as const
-const MUTATIONS = new Set(["install", "restore", "stake", "start", "stop", "update"])
+const HELPER_IMAGE = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+const MUTATIONS = new Set(["restore", "stake", "start", "stop"])
 
 type Parsed = { command?: string; options: Map<string, string | true>; rest: string[] }
 
@@ -67,6 +68,21 @@ function requiredOption(parsed: Parsed, name: string): string {
 
 function validateSimple(label: string, value: string, pattern: RegExp): string {
   if (!pattern.test(value) || value.startsWith("-")) throw new Error(`invalid ${label}`)
+  return value
+}
+
+function validateCommit(value: string): string {
+  if (!/^[0-9a-f]{40}$/.test(value)) throw new Error("commit must be a full 40-character lowercase SHA-1")
+  return value
+}
+
+function validateHostKeyFingerprint(value: string): string {
+  if (!/^SHA256:[A-Za-z0-9+/]{43}$/.test(value)) throw new Error("host-key fingerprint must use OpenSSH SHA256 format")
+  return value
+}
+
+export function validateNodePublicKey(value: string): string {
+  if (!/^0x[0-9a-f]{64}$/.test(value)) throw new Error("node public key must be 0x followed by exactly 64 lowercase hexadecimal characters")
   return value
 }
 
@@ -128,6 +144,10 @@ export function readConfig(): OperatorConfig {
     throw new Error("operator state has an invalid or unsupported shape")
   }
   if ((statSync(CONFIG_PATH).mode & 0o077) !== 0) throw new Error("operator state permissions must be 0600")
+  validateSimple("alias", config.alias, /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/)
+  validateSimple("hostname", config.hostname, /^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$/)
+  validateSimple("user", config.user, /^[a-z_][a-z0-9_-]{0,31}$/)
+  validateSimple("branch", config.branch, /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/)
   validatePublicUrl(config.publicUrl)
   return config as OperatorConfig
 }
@@ -168,16 +188,44 @@ export function initCommand(parsed: Parsed): void {
   const user = validateSimple("user", option(parsed, "user", "root")!, /^[a-z_][a-z0-9_-]{0,31}$/)
   const branch = validateSimple("branch", option(parsed, "branch", "stabilisation")!, /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/)
   const publicUrl = validatePublicUrl(requiredOption(parsed, "public-url"))
+  const expectedFingerprint = validateHostKeyFingerprint(requiredOption(parsed, "host-key-sha256"))
   const identityFile = resolve(option(parsed, "identity-file", join(homedir(), ".ssh", `demos-node-${alias}`))!)
 
+  if (existsSync(CONFIG_PATH) || existsSync(SSH_CONFIG_PATH)) throw new Error("operator state already exists; use a separate clone/state directory or archive it manually")
   ensureStateDir()
   if (parsed.options.has("skip-keygen") && process.env.DEMOSCTL_TEST_MODE !== "1") {
     throw new Error("--skip-keygen is reserved for isolated tests")
   }
-  if (!parsed.options.has("skip-keygen") && !existsSync(identityFile)) {
+  if (!parsed.options.has("skip-keygen") && (existsSync(identityFile) || existsSync(`${identityFile}.pub`))) {
+    throw new Error("refusing to reuse an existing SSH key; choose a new --identity-file path")
+  }
+  const knownHostsPath = join(STATE_DIR, "known_hosts")
+  if (parsed.options.has("skip-host-key-check") && process.env.DEMOSCTL_TEST_MODE !== "1") {
+    throw new Error("--skip-host-key-check is reserved for isolated tests")
+  }
+  if (parsed.options.has("skip-host-key-check")) {
+    writePrivate(knownHostsPath, `${hostname} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestOnlyPlaceholder\n`)
+  } else {
+    const scanned = runChecked(binary("ssh-keyscan"), ["-T", "10", "--", hostname], { stdout: "pipe" })
+    const matching = scanned.split("\n").filter((line) => {
+      if (!line || line.startsWith("#")) return false
+      const check = Bun.spawnSync([binary("ssh-keygen"), "-lf", "-", "-E", "sha256"], { stdin: new Blob([`${line}\n`]), stdout: "pipe", stderr: "pipe" })
+      return check.exitCode === 0 && check.stdout.toString().split(/\s+/).includes(expectedFingerprint)
+    })
+    if (matching.length === 0) throw new Error("scanned SSH host keys did not match --host-key-sha256; verify it out of band")
+    writePrivate(knownHostsPath, `${matching.join("\n")}\n`)
+  }
+
+  if (!parsed.options.has("skip-keygen")) {
     mkdirSync(dirname(identityFile), { recursive: true, mode: 0o700 })
     console.log(`Creating a dedicated passphrase-protected SSH identity at ${identityFile}`)
-    runChecked(binary("ssh-keygen"), ["-t", "ed25519", "-a", "100", "-f", identityFile, "-C", `demos-node-${alias}`])
+    try {
+      runChecked(binary("ssh-keygen"), ["-t", "ed25519", "-a", "100", "-f", identityFile, "-C", `demos-node-${alias}`])
+    } catch (error) {
+      if (existsSync(identityFile)) unlinkSync(identityFile)
+      if (existsSync(`${identityFile}.pub`)) unlinkSync(`${identityFile}.pub`)
+      throw error
+    }
   }
 
   const config: OperatorConfig = {
@@ -195,7 +243,7 @@ export function initCommand(parsed: Parsed): void {
   writePrivate(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`)
   writePrivate(
     SSH_CONFIG_PATH,
-    `Host ${alias}\n  HostName ${hostname}\n  User ${user}\n  IdentityFile ${sshConfigValue(identityFile)}\n  IdentitiesOnly yes\n  StrictHostKeyChecking ask\n`,
+    `Host ${alias}\n  HostName ${hostname}\n  User ${user}\n  IdentityFile ${sshConfigValue(identityFile)}\n  IdentitiesOnly yes\n  UserKnownHostsFile ${sshConfigValue(knownHostsPath)}\n  StrictHostKeyChecking yes\n`,
   )
   refreshWorkspace(config)
   appendOperation(config, "init")
@@ -208,7 +256,7 @@ function doctorCommand(parsed: Parsed): void {
     throw new Error("dedicated SSH identity or public key is missing")
   }
   if ((statSync(config.identityFile).mode & 0o077) !== 0) throw new Error("SSH private-key permissions must be 0600")
-  const required = ["bun", "git", "ssh", "ssh-keygen", "age"]
+  const required = ["bun", "git", "ssh", "ssh-keygen", "ssh-keyscan", "age"]
   const local = Object.fromEntries(required.map((name) => [name, binary(name)]))
   const result: Record<string, unknown> = { local: "ok", commands: local, config: "ok" }
   if (!parsed.options.has("local-only")) {
@@ -220,9 +268,11 @@ function doctorCommand(parsed: Parsed): void {
   console.log(JSON.stringify(result, null, 2))
 }
 
-function installCommand(config: OperatorConfig): void {
+function installCommand(config: OperatorConfig, parsed: Parsed): void {
+  const commit = validateCommit(requiredOption(parsed, "commit"))
+  if (option(parsed, "confirm") !== `install:${commit}`) throw new Error(`refusing install; pass --confirm install:${commit}`)
   const script = readFileSync(join(ROOT, "scripts", "remote-bootstrap.sh"))
-  runChecked(binary("ssh"), sshArgs(config, ["bash", "-s", "--", "--public-url", config.publicUrl, "--branch", config.branch]), {
+  runChecked(binary("ssh"), sshArgs(config, ["bash", "-s", "--", "--public-url", config.publicUrl, "--branch", config.branch, "--commit", commit]), {
     stdin: new Uint8Array(script),
   })
   appendOperation(config, "install")
@@ -235,6 +285,7 @@ function secretsCommand(config: OperatorConfig, parsed: Parsed): void {
     return
   }
   if (parsed.rest[0] !== "configure") throw new Error("usage: ./demosctl secrets configure|doctor")
+  if (option(parsed, "confirm") !== "secrets") throw new Error("refusing secret mutation; pass --confirm secrets")
   const args = [join(ROOT, "scripts", "configure-secrets.sh"), "--ssh-config", SSH_CONFIG_PATH, "--host", config.alias]
   if (parsed.options.has("ffi")) args.push("--ffi")
   runChecked("bash", args)
@@ -249,7 +300,7 @@ async function backupCommand(config: OperatorConfig): Promise<string> {
   binary("age")
   mkdirSync(BACKUP_DIR, { recursive: true, mode: 0o700 })
   const outputPath = join(BACKUP_DIR, `${config.alias}-${timestamp()}.tar.age`)
-  const remote = "sudo -n docker volume inspect demos_node_state >/dev/null && sudo -n docker run --rm -v demos_node_state:/state:ro alpine:3.20 sh -ec 'test -s /state/.demos_identity; tar -C /state -cf - .'"
+  const remote = `sudo -n docker volume inspect demos_node_state >/dev/null && (sudo -n docker image inspect ${HELPER_IMAGE} >/dev/null 2>&1 || sudo -n docker pull ${HELPER_IMAGE} >/dev/null) && sudo -n docker run --rm --pull=never --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only -v demos_node_state:/state:ro ${HELPER_IMAGE} sh -ec 'test -s /state/.demos_identity; tar -C /state -cf - .'`
   const ssh = Bun.spawn([binary("ssh"), ...sshArgs(config, [remote])], { cwd: ROOT, stdout: "pipe", stderr: "inherit" })
   const age = Bun.spawn([binary("age"), "-p", "-o", outputPath], { cwd: ROOT, stdin: ssh.stdout, stdout: "inherit", stderr: "inherit" })
   const [sshExit, ageExit] = await Promise.all([ssh.exited, age.exited])
@@ -265,22 +316,30 @@ async function backupCommand(config: OperatorConfig): Promise<string> {
 
 async function restoreCommand(config: OperatorConfig, parsed: Parsed): Promise<void> {
   const source = resolve(requiredOption(parsed, "from"))
+  const expectedPublicKey = validateNodePublicKey(requiredOption(parsed, "expected-public-key"))
   if (!existsSync(source) || statSync(source).size === 0 || !source.endsWith(".age")) throw new Error("--from must be a non-empty .age backup")
   const stagingVolume = `demos_node_state_restore_${Date.now()}`
   const rollbackVolume = `demos_node_state_rollback_${Date.now()}`
   const age = Bun.spawn([binary("age"), "-d", source], { cwd: ROOT, stdout: "pipe", stderr: "inherit" })
-  const stageRemote = `sudo -n docker volume create ${stagingVolume} >/dev/null && sudo -n docker run --rm -i -v ${stagingVolume}:/state alpine:3.20 sh -ec 'tar -C /state -xf -; test -s /state/.demos_identity'`
+  const stageRemote = `set -e; cleanup() { sudo -n docker volume rm ${stagingVolume} >/dev/null 2>&1 || true; }; trap cleanup ERR INT TERM; (sudo -n docker image inspect ${HELPER_IMAGE} >/dev/null 2>&1 || sudo -n docker pull ${HELPER_IMAGE} >/dev/null); sudo -n docker volume create ${stagingVolume} >/dev/null; sudo -n docker run --rm --pull=never --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only -i -v ${stagingVolume}:/state ${HELPER_IMAGE} sh -ec 'tar -C /state -xf -; test -s /state/.demos_identity'; trap - ERR INT TERM`
   const ssh = Bun.spawn([binary("ssh"), ...sshArgs(config, [stageRemote])], { cwd: ROOT, stdin: age.stdout, stdout: "inherit", stderr: "inherit" })
   const [ageExit, sshExit] = await Promise.all([age.exited, ssh.exited])
   if (ageExit !== 0 || sshExit !== 0) {
-    throw new Error(`backup validation/staging failed; live state was not touched (staging volume: ${stagingVolume})`)
+    throw new Error("backup validation/staging failed; live state was not touched and staging cleanup was attempted")
+  }
+  const verifyStagedIdentity = `cd ${REMOTE_DIR} && sudo -n docker compose --env-file .env --env-file /etc/demos-node/node.env run --rm --no-deps -v ${stagingVolume}:/app/state node bun run show:pubkey | grep -Fx -- 'Public Key: ${expectedPublicKey}' >/dev/null`
+  try {
+    runChecked(binary("ssh"), sshArgs(config, [verifyStagedIdentity]))
+  } catch (error) {
+    runChecked(binary("ssh"), sshArgs(config, [`sudo -n docker volume rm ${stagingVolume} >/dev/null`]))
+    throw new Error(`staged backup identity did not match --expected-public-key: ${error instanceof Error ? error.message : String(error)}`)
   }
   const activateRemote = [
     `sudo -n systemctl stop ${SERVICE}`,
     "sudo -n docker volume inspect demos_node_state >/dev/null",
     `sudo -n docker volume create ${rollbackVolume} >/dev/null`,
-    `sudo -n docker run --rm -v demos_node_state:/source:ro -v ${rollbackVolume}:/target alpine:3.20 sh -ec 'cp -a /source/. /target/; test -s /target/.demos_identity'`,
-    `(sudo -n docker run --rm -v ${stagingVolume}:/source:ro -v demos_node_state:/target alpine:3.20 sh -ec 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; test -s /target/.demos_identity' || { echo 'activation failed; restoring rollback volume' >&2; sudo -n docker run --rm -v ${rollbackVolume}:/source:ro -v demos_node_state:/target alpine:3.20 sh -ec 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; test -s /target/.demos_identity'; exit 1; })`,
+    `sudo -n docker run --rm --pull=never --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only -v demos_node_state:/source:ro -v ${rollbackVolume}:/target ${HELPER_IMAGE} sh -ec 'cp -a /source/. /target/; test -s /target/.demos_identity'`,
+    `(sudo -n docker run --rm --pull=never --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only -v ${stagingVolume}:/source:ro -v demos_node_state:/target ${HELPER_IMAGE} sh -ec 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; test -s /target/.demos_identity' || { echo 'activation failed; restoring rollback volume' >&2; if sudo -n docker run --rm --pull=never --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only -v ${rollbackVolume}:/source:ro -v demos_node_state:/target ${HELPER_IMAGE} sh -ec 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; test -s /target/.demos_identity'; then sudo -n docker volume rm ${stagingVolume} ${rollbackVolume} >/dev/null; else echo 'rollback failed; plaintext recovery volumes retained for manual recovery' >&2; fi; exit 1; })`,
     `sudo -n docker volume rm ${stagingVolume} ${rollbackVolume} >/dev/null`,
     `systemctl show ${SERVICE} --property=LoadState,ActiveState,SubState --no-pager`,
   ].join(" && ")
@@ -293,7 +352,7 @@ function serviceCommand(config: OperatorConfig, action: "start" | "stop"): void 
   const remote = `sudo -n systemctl ${action} ${SERVICE} && systemctl show ${SERVICE} --property=LoadState,ActiveState,SubState --no-pager`
   runChecked(binary("ssh"), sshArgs(config, [remote]))
   appendOperation(config, action)
-  console.log(action === "start" ? "Service start completed; run status before claiming readiness." : "Node service stopped; the VPS remains running.")
+  console.log(action === "start" ? "Service start completed; run status before claiming readiness." : "Node service stopped; the host remains running.")
 }
 
 function pubkeyCommand(config: OperatorConfig): void {
@@ -308,21 +367,26 @@ function stakeCommand(config: OperatorConfig): void {
   console.log("Stake command completed. Verify validator/network state before starting the node.")
 }
 
-async function updateCommand(config: OperatorConfig): Promise<void> {
+async function updateCommand(config: OperatorConfig, parsed: Parsed): Promise<void> {
+  const commit = validateCommit(requiredOption(parsed, "commit"))
+  if (option(parsed, "confirm") !== `update:${commit}`) throw new Error(`refusing update; pass --confirm update:${commit}`)
   await backupCommand(config)
   const remote = [
     `cd ${REMOTE_DIR}`,
     `test \"$(git remote get-url origin)\" = \"${UPSTREAM_REPO}\"`,
-    `test \"$(git branch --show-current)\" = \"${config.branch}\"`,
     `test -z \"$(git status --porcelain)\"`,
     `sudo -n git fetch origin ${config.branch}`,
-    `sudo -n git merge --ff-only origin/${config.branch}`,
+    `sudo -n git cat-file -e ${commit}^{commit}`,
+    `sudo -n git merge-base --is-ancestor ${commit} origin/${config.branch}`,
+    `sudo -n git merge-base --is-ancestor HEAD ${commit}`,
+    `sudo -n git checkout --detach ${commit}`,
+    `test \"$(git rev-parse HEAD)\" = \"${commit}\"`,
     `sudo -n systemctl restart ${SERVICE}`,
     `systemctl show ${SERVICE} --property=LoadState,ActiveState,SubState,InvocationID --no-pager`,
   ].join(" && ")
   runChecked(binary("ssh"), sshArgs(config, [remote]))
   appendOperation(config, "update")
-  console.log("Fast-forward update and service restart completed; run status before claiming readiness.")
+  console.log(`Update to approved commit ${commit} and service restart completed; run status before claiming readiness.`)
 }
 
 async function getJson(url: string): Promise<{ ok: boolean; status?: number; body?: unknown; error?: string }> {
@@ -394,22 +458,22 @@ function usage(): void {
   console.log(`DEMOS node starter
 
 Usage:
-  ./demosctl init --alias NAME --hostname HOST --public-url http://HOST:53550 [--user root]
+  ./demosctl init --alias NAME --hostname HOST --public-url http://HOST:53550 --host-key-sha256 SHA256:... [--user root]
   ./demosctl doctor [--local-only]
   ./demosctl ssh
-  ./demosctl install --confirm install
-  ./demosctl secrets configure [--ffi]
+  ./demosctl install --commit FULL_SHA --confirm install:FULL_SHA
+  ./demosctl secrets configure --confirm secrets [--ffi]
   ./demosctl secrets doctor
   ./demosctl pubkey
   ./demosctl backup
-  ./demosctl restore --from PATH --confirm restore
+  ./demosctl restore --from PATH --expected-public-key 0x... --confirm restore
   ./demosctl stake --confirm stake
   ./demosctl status
   ./demosctl workspace
   ./demosctl history
   ./demosctl stop --confirm stop
   ./demosctl start --confirm start
-  ./demosctl update --confirm update`)
+  ./demosctl update --commit FULL_SHA --confirm update:FULL_SHA`)
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -424,7 +488,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   switch (parsed.command) {
     case "doctor": return doctorCommand(parsed)
     case "ssh": return sshCommand(config)
-    case "install": return installCommand(config)
+    case "install": return installCommand(config, parsed)
     case "secrets": return secretsCommand(config, parsed)
     case "pubkey": return pubkeyCommand(config)
     case "backup": await backupCommand(config); return
@@ -435,7 +499,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "history": return historyCommand()
     case "stop": return serviceCommand(config, "stop")
     case "start": return serviceCommand(config, "start")
-    case "update": await updateCommand(config); return
+    case "update": await updateCommand(config, parsed); return
     default: throw new Error(`unknown command: ${parsed.command}`)
   }
 }

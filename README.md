@@ -1,12 +1,12 @@
 # DEMOS Node Starter
 
-A beginner-safe, Codex-assisted operator kit for running one DEMOS testnet node on an operator-controlled Ubuntu host.
+A security-first, Codex-assisted operator kit for running one DEMOS testnet node on an operator-controlled Ubuntu host. This repository is an experimental public alpha: inspect every approved upstream commit and use a disposable Ubuntu host before operating valuable identity material.
 
 The host can be a cloud VPS from any provider, dedicated hardware, or a suitable local Ubuntu system. The starter connects through SSH and begins after the operator has prepared the host and its network access.
 
 ## What you need
 
-- An operator-controlled Ubuntu 22.04 or 24.04 host with at least 4 CPU cores, 4 GB RAM, and SSD storage.
+- An operator-controlled amd64/x86-64 Ubuntu 22.04 or 24.04 host with at least 4 CPU cores, 4 GB RAM, and SSD storage. ARM hosts are not supported because the required upstream TLSNotary image is currently amd64-only.
 - A publicly reachable IP or DNS endpoint for the node, with TCP ports `53550` and `53551` routed to the host.
 - A Mac, Linux, or Windows-with-WSL workstation with Git, Bun, OpenSSH, and `age`.
 - Codex in the ChatGPT desktop app, CLI, or IDE extension. Use workspace permissions with approvals; do not enable unrestricted Full Access for node operations.
@@ -33,16 +33,17 @@ Treat this clone as the node's command center, not as a disposable installer. Re
 
 ## 2. Create the dedicated SSH identity
 
-Choose a short local alias and substitute the host's public IP or DNS name:
+From your host's authenticated console, copy its OpenSSH host-key fingerprint in `SHA256:...` format. This must come from a channel independent of SSH. Choose a short local alias and substitute the real host, URL, and fingerprint:
 
 ```bash
 ./demosctl init \
   --alias my-demos-node \
   --hostname 203.0.113.10 \
-  --public-url http://203.0.113.10:53550
+  --public-url http://203.0.113.10:53550 \
+  --host-key-sha256 SHA256:REPLACE_WITH_CONSOLE_FINGERPRINT
 ```
 
-The command asks for a passphrase and creates a dedicated Ed25519 key. Add **only** the matching `.pub` file through your hosting dashboard or the host's `authorized_keys`. Never upload or paste the private key.
+The command verifies the host key, asks for a passphrase, and creates a new dedicated Ed25519 key. It refuses to reuse an existing key or overwrite existing operator state. Add **only** the matching `.pub` file through your host-management console or the host's `authorized_keys`. Never upload or paste the private key.
 
 Load the key into your local SSH agent with `ssh-add <identity-file>` before running unattended checks. `./demosctl workspace` writes a private, gitignored `.demos/WORKSPACE.md` system map for future operators and Codex sessions.
 
@@ -58,18 +59,29 @@ The doctor checks local dependencies, state-file permissions, root SSH authentic
 
 ## 4. Install the node
 
-Review the exact target shown by `.demos/operator.json`, then run:
+Resolve the current upstream branch tip, inspect that exact commit on GitHub, and obtain any required maintainer approval:
 
 ```bash
-./demosctl install --confirm install
+UPSTREAM_COMMIT="$(git ls-remote https://github.com/kynesyslabs/node.git refs/heads/stabilisation | cut -f1)"
+printf '%s\n' "${UPSTREAM_COMMIT}"
+```
+
+Review the exact target in `.demos/operator.json`, then bind installation to that full commit:
+
+```bash
+./demosctl install \
+  --commit "${UPSTREAM_COMMIT}" \
+  --confirm "install:${UPSTREAM_COMMIT}"
 ```
 
 The installer:
 
 - accepts a supported Ubuntu host reached through root SSH;
 - installs Docker from Docker's official Ubuntu repository;
-- creates a non-sudo `demos` runtime user;
-- clones `https://github.com/kynesyslabs/node.git` on `stabilisation` into `/opt/demos-node`;
+- verifies Ubuntu 22.04 or 24.04 and the expected Docker CE packages;
+- verifies that the fetched `stabilisation` tip is the exact approved commit and checks it out detached;
+- pins the network-isolated identity backup helper by image digest;
+- clones `https://github.com/kynesyslabs/node.git` into `/opt/demos-node`;
 - writes `/etc/demos-node/node.env` as root-only mode `0600`;
 - installs and starts only `demos-node.service`;
 - starts Postgres, TLSNotary, the node, Prometheus, and Grafana explicitly;
@@ -87,7 +99,7 @@ Create credentials only in the issuing service's own dashboard:
 Then enter them through hidden terminal prompts:
 
 ```bash
-./demosctl secrets configure
+./demosctl secrets configure --confirm secrets
 ```
 
 The values stream through SSH stdin into `/etc/demos-node/node.env`. They are not written to the workstation, passed as command arguments, or read back. Empty fields stay unset. Restarting remains a separate decision.
@@ -105,7 +117,7 @@ Complete the [Security Onboarding checklist](docs/security-onboarding.md) for ev
 Do not use `TLSNOTARY_SIGNING_KEY` in the default Docker mode. Only operators who deliberately switch upstream to FFI mode should run:
 
 ```bash
-./demosctl secrets configure --ffi
+./demosctl secrets configure --confirm secrets --ffi
 ```
 
 Shared Discord, RapidAPI, Nomis, GitHub, or other credentials copied from chat must not be used. If a credential has appeared in chat or Git, rotate it first.
@@ -160,12 +172,12 @@ All checks must pass before calling the node reachable and internally consistent
 ./demosctl workspace
 ./demosctl history
 ./demosctl backup
-./demosctl update --confirm update
+./demosctl update --commit FULL_APPROVED_SHA --confirm update:FULL_APPROVED_SHA
 ./demosctl stop --confirm stop
 ./demosctl start --confirm start
 ```
 
-`update` creates an encrypted backup first, refuses dirty or divergent Git state, fast-forwards only from `origin/stabilisation`, and then restarts the node service. Run `status` afterward.
+`update` creates an encrypted backup first, refuses dirty or divergent Git state, verifies that the explicitly approved commit belongs to `origin/stabilisation` and descends from the installed commit, then checks out that exact revision and restarts the service. Run `status` afterward.
 
 Successful mutating CLI actions append a value-free receipt to `.demos/operations.jsonl`. The log records time, target alias, action, and outcome only; it is local operator memory, not proof that the network accepted the node.
 
@@ -174,16 +186,25 @@ Successful mutating CLI actions append a value-free receipt to `.demos/operation
 Restore leaves the service stopped:
 
 ```bash
-./demosctl restore --from .demos/backups/my-demos-node-TIMESTAMP.tar.age --confirm restore
+./demosctl restore \
+  --from .demos/backups/my-demos-node-TIMESTAMP.tar.age \
+  --expected-public-key 0xYOUR_PREVIOUSLY_RECORDED_NODE_PUBLIC_KEY \
+  --confirm restore
 ./demosctl start --confirm start
 ./demosctl status
 ```
 
 There is deliberately no purge command. Never use `docker compose down -v` unless the node owner explicitly intends to destroy the node identity and all persisted state.
 
-## Current alpha limits
+Before live state is touched, restore derives the public key from the staged archive and requires it to match the separately recorded expected key. Recovery commands provision the content-addressed helper image when it is absent, then run it with pulls disabled, networking disabled, and Linux capabilities removed.
 
-- Private alpha; not yet approved for public redistribution or live-node rollout.
+## Current limitations
+
+- Experimental public alpha; a disposable-host canary remains mandatory before live use.
 - Operator-controlled Ubuntu host only; shared hosting is unsupported.
-- Public routing and host/provider firewall setup remain operator-managed.
+- Public routing and host firewall setup remain operator-managed.
 - Network bootstrap peer and final chain-aware acceptance must be confirmed by the Kynesys maintainer.
+
+## Contributing, security, and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes and [SECURITY.md](SECURITY.md) for private vulnerability reporting and operator boundaries. This starter is licensed under [CC BY-NC-SA 4.0](LICENSE.md). The upstream DEMOS node fetched during installation is a separate project governed by its own license and policies.
